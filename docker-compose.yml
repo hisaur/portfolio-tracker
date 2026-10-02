@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # PostgreSQL Database for Ghostfolio
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: ghostfolio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ghostfolio}
+      POSTGRES_USER: ${POSTGRES_USER:-ghostfolio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ghostfolio} -d ${POSTGRES_DB:-ghostfolio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ghostfolio-net
+
+  # -------------------------------------------------------------
+  # Redis Cache for Ghostfolio
+  # -------------------------------------------------------------
+  redis:
+    image: redis:alpine
+    container_name: ghostfolio-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ghostfolio-net
+
+  # -------------------------------------------------------------
+  # Ghostfolio Application Service
+  # -------------------------------------------------------------
+  ghostfolio:
+    image: ghostfolio/ghostfolio:latest
+    container_name: ghostfolio-app
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ghostfolio}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ghostfolio}?sslmode=prefer
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ACCESS_TOKEN_SALT: ${ACCESS_TOKEN_SALT}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3333/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - ghostfolio-net
+
+  # -------------------------------------------------------------
+  # Custom Python Sidecar Sync Service
+  # -------------------------------------------------------------
+  sync-job:
+    build:
+      context: ./sync-job
+      dockerfile: Dockerfile
+    container_name: ghostfolio-sync-job
+    environment:
+      GHOSTFOLIO_URL: http://ghostfolio:3333
+      GHOSTFOLIO_BEARER_TOKEN: ${GHOSTFOLIO_BEARER_TOKEN:-}
+      GHOSTFOLIO_ACCOUNT_ID: ${GHOSTFOLIO_ACCOUNT_ID:-}
+      GHOSTFOLIO_DATA_SOURCE: ${GHOSTFOLIO_DATA_SOURCE:-YAHOO}
+      CSV_FILE_PATH: /data/portfolio_docker_sync.csv
+      INITIAL_WAIT_SECONDS: ${INITIAL_WAIT_SECONDS:-5}
+      HEALTH_CHECK_TIMEOUT: ${HEALTH_CHECK_TIMEOUT:-120}
+      SYNC_MODE: ${SYNC_MODE:-once} # Set to 'watch' for continuous sync or 'once' for on-demand
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-30}
+    volumes:
+      # Mount the local synced CSV into the container as read-only (:ro)
+      - "${LOCAL_CSV_PATH:-G:/My Drive/portfolio_docker_sync.csv}:/data/portfolio_docker_sync.csv:ro"
+    depends_on:
+      - ghostfolio
+    networks:
+      - ghostfolio-net
+
+volumes:
+  postgres_data:
+
+networks:
+  ghostfolio-net:
+    driver: bridge

@@ -1,0 +1,46 @@
+# =================================================================
+# Git Ignore - Ghostfolio Ephemeral Ingestion Pipeline
+# =================================================================
+
+# 1. Environment & Secret Credentials (NEVER commit live secrets)
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# 2. Financial Data & CSV Logs (NEVER commit actual portfolio transactions)
+*.csv
+portfolio_docker_sync.csv
+data/
+postgres_data/
+docker-volumes/
+
+# 3. Python Artifacts & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# 4. Logs and Session States
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 5. Operating System & IDE Specific
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
